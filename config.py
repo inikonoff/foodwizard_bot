@@ -10,7 +10,7 @@ UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
 
 # Настройки
 SPEECH_LANGUAGE = "ru-RU"
-GROQ_MODEL = "llama-3.1-70b-versatile"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_MAX_TOKENS = 2000
 
 # Папки
