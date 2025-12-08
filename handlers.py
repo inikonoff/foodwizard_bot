@@ -25,9 +25,17 @@ async def cmd_start(message: Message):
     user_id = message.from_user.id
     state_manager.clear_history(user_id)
     await message.answer(
-        "👋 Привет!\n\n"
-        "🎤 Отправь голосовое с перечнем продуктов.\n"
+        "👋 Привет! Я твой Су-Шеф.\n\n"
+        "🎤 <b>Отправь голосовое</b> с продуктами.\n"
         "📝 Или напиши список текстом."
+    )
+
+# --- НОВЫЙ ХЭНДЛЕР: АВТОР ---
+async def cmd_author(message: Message):
+    await message.answer(
+        "👨‍💻 <b>Разработчик бота:</b> @inikonoff\n\n"
+        "Пишите по вопросам и предложениям!",
+        parse_mode="HTML"
     )
 
 async def handle_easter_egg_recipe(message: Message):
@@ -69,12 +77,11 @@ async def handle_voice(message: Message):
         text = await voice_processor.process_voice(temp_file)
         await processing_msg.delete()
         
-        # Если история пустая -> это первый список продуктов -> спрашиваем стиль
+        # Если история пустая -> это первый список продуктов
         history = state_manager.get_history(user_id)
         if not history:
             await handle_initial_products(message, user_id, text)
         else:
-            # Если история есть -> это уточнение
             await handle_user_choice(message, user_id, text)
             
     except Exception as e:
@@ -85,10 +92,6 @@ async def handle_voice(message: Message):
             except: pass
 
 async def handle_initial_products(message: Message, user_id: int, products: str):
-    """
-    1. Сохраняет продукты.
-    2. Предлагает выбрать стиль (кнопки).
-    """
     state_manager.add_message(user_id, "user", products)
     
     await message.answer(
@@ -99,39 +102,24 @@ async def handle_initial_products(message: Message, user_id: int, products: str)
     )
 
 async def handle_style_selection_callback(callback: CallbackQuery):
-    """
-    Обрабатывает нажатие на кнопки стиля.
-    """
     user_id = callback.from_user.id
-    style_code = callback.data # style_ordinary или style_exotic
-    
-    # Определяем название стиля для промпта
+    style_code = callback.data
     style_name = "простой, домашний" if style_code == "style_ordinary" else "экзотический, необычный"
     
-    # Удаляем часики с кнопки
     await callback.answer(f"Выбран стиль: {style_name}")
-    
-    # Получаем продукты из истории (мы их сохранили на шаге handle_initial_products)
     products = state_manager.get_products(user_id)
     
     if not products:
         await callback.message.answer("Потерял список продуктов 😢 Начните заново /start")
         return
 
-    # Редактируем сообщение с кнопками на "Думаю..."
     await callback.message.edit_text(f"🍳 Подбираю {style_name}е рецепты из: {products}...")
     
     try:
-        # Генерируем с учетом стиля
         response = await groq_service.generate_dishes(products, style=style_name)
-        
-        # Сохраняем ответ бота
         state_manager.add_message(user_id, "bot", response)
-        
-        # Отправляем результат (редактируем сообщение или новое)
-        await callback.message.delete() # Удаляем "Думаю..."
+        await callback.message.delete()
         await callback.message.answer(response)
-        
     except Exception as e:
         await callback.message.edit_text(f"Ошибка нейросети: {e}")
 
@@ -140,7 +128,6 @@ async def handle_style_selection_callback(callback: CallbackQuery):
 async def handle_user_choice(message: Message, user_id: int, text: str):
     last_bot_msg = state_manager.get_last_bot_message(user_id)
     
-    # Если пользователь пишет текст без истории, считаем это списком продуктов
     if not last_bot_msg:
         await handle_initial_products(message, user_id, text)
         return
@@ -164,7 +151,6 @@ async def handle_dish_selection(message: Message, user_id: int, dish_name: str):
     wait_msg = await message.answer(f"👨‍🍳 Пишу рецепт: {dish_name}...")
     try:
         products = state_manager.get_products(user_id)
-        # В generate_recipe теперь учитывается логика "докупить"
         recipe = await groq_service.generate_recipe(dish_name, products)
         image_url = await image_service.search_dish_image(dish_name)
         
@@ -186,11 +172,6 @@ async def handle_dish_selection(message: Message, user_id: int, dish_name: str):
 async def handle_add_products(message: Message, user_id: int, new_products: str):
     state_manager.update_products(user_id, new_products)
     all_products = state_manager.get_products(user_id)
-    
-    # При добавлении продуктов стиль сбрасываем на дефолтный или спрашиваем заново?
-    # Чтобы не усложнять, пока просто генерируем (по умолчанию "обычный", или можно добавить кнопки снова)
-    # Давай лучше просто сгенерируем обновленный список, считая стиль "смешанным"
-    
     wait_msg = await message.answer(f"➕ Добавил: {new_products}. Обновляю меню...")
     try:
         response = await groq_service.generate_dishes(all_products, style="с учетом новых продуктов")
@@ -207,17 +188,14 @@ async def handle_restart(callback: CallbackQuery):
     await callback.answer()
 
 def register_handlers(dp: Dispatcher):
+    # Регистрируем команды меню
     dp.message.register(cmd_start, Command("start"))
+    dp.message.register(cmd_author, Command("author"))
+    
     dp.message.register(handle_easter_egg_recipe, F.text.lower().startswith("дай рецепт"))
     dp.message.register(handle_voice, F.voice)
-    
-    # Если пришел просто текст (не команда, не "дай рецепт")
-    # Нужно понять: это первый список или продолжение диалога?
-    # Логика внутри handle_user_choice сама разберется (проверит историю)
     dp.message.register(handle_user_choice, F.text)
     
     dp.callback_query.register(handle_restart, F.data == "restart")
     dp.callback_query.register(handle_delete_msg, F.data == "delete_msg")
-    
-    # Регистрируем обработчик кнопок стиля (начинаются с style_)
     dp.callback_query.register(handle_style_selection_callback, F.data.startswith("style_"))
