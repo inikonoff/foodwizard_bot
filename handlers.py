@@ -26,7 +26,13 @@ def get_style_keyboard() -> InlineKeyboardMarkup:
 def get_restart_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура с кнопкой рестарта"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Заново", callback_data="restart")]
+        [InlineKeyboardButton(text="🔄 Сброс", callback_data="restart")]
+    ])
+
+def get_hide_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для скрытия рецепта"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Скрыть", callback_data="delete_msg")]
     ])
 
 # --- ХЭНДЛЕРЫ ---
@@ -37,14 +43,13 @@ async def cmd_start(message: Message):
     await message.answer(
         "👋 Здравствуйте.\n\n"
         "🎤 Отправьте голосовое или текстовое сообщение с перечнем продуктов, и я подскажу, что из них можно приготовить.\n"
-        '📝 Или напишите "Дай рецепт [блюдо]".',
+        '📝 Или напишите <b>"Дай рецепт [блюдо]"</b>.',
         parse_mode="HTML"
     )
 
 async def cmd_author(message: Message):
     await message.answer(
-        "👨‍💻 <b>Разработчик бота:</b> @inikonoff\n\n"
-        "Пишите по вопросам и предложениям!",
+        "👨‍💻 <b>Разработчик бота:</b> @inikonoff",
         parse_mode="HTML"
     )
 
@@ -60,13 +65,16 @@ async def handle_easter_egg_recipe(message: Message):
         image_url = await image_service.search_dish_image(dish_name)
         await wait_msg.delete()
         
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗑 Скрыть", callback_data="delete_msg")]])
+        kb = get_hide_keyboard()
 
+        # ИСПРАВЛЕНИЕ: Отправляем фото и текст раздельно
         if image_url:
-            await message.answer_photo(image_url, caption=recipe[:1024], reply_markup=kb)
-            if len(recipe) > 1024: await message.answer(recipe[1024:])
-        else:
-            await message.answer(recipe, reply_markup=kb)
+            # Сначала фото
+            await message.answer_photo(image_url)
+        
+        # Потом текст (лимит 4096 символов, этого точно хватит)
+        await message.answer(recipe, reply_markup=kb)
+
     except Exception as e:
         await wait_msg.delete()
         await message.answer(f"Ошибка: {e}")
@@ -91,7 +99,6 @@ async def handle_voice(message: Message):
         if not history:
             await handle_initial_products(message, user_id, text)
         else:
-            # Передаем явно параметры, так как вызываем вручную
             await handle_user_choice(message, user_id, text)
             
     except Exception as e:
@@ -137,9 +144,7 @@ async def handle_style_selection_callback(callback: CallbackQuery):
 
 # --- ВЫБОР БЛЮДА ИЛИ ДОБАВЛЕНИЕ ---
 
-# ИСПРАВЛЕНИЕ ЗДЕСЬ: Аргументы сделаны необязательными
 async def handle_user_choice(message: Message, user_id: int = None, text: str = None):
-    # Если вызвал Aiogram (текстовое сообщение), аргументов не будет
     if user_id is None:
         user_id = message.from_user.id
     if text is None:
@@ -148,7 +153,6 @@ async def handle_user_choice(message: Message, user_id: int = None, text: str = 
     last_bot_msg = state_manager.get_last_bot_message(user_id)
     
     if not last_bot_msg:
-        # Если истории нет, считаем это первым вводом продуктов
         await handle_initial_products(message, user_id, text)
         return
 
@@ -178,11 +182,13 @@ async def handle_dish_selection(message: Message, user_id: int, dish_name: str):
         
         kb = get_restart_keyboard()
         
+        # ИСПРАВЛЕНИЕ: Отправляем фото и текст раздельно
         if image_url:
-            await message.answer_photo(image_url, caption=recipe[:1024], reply_markup=kb)
-            if len(recipe) > 1024: await message.answer(recipe[1024:])
-        else:
-            await message.answer(recipe, reply_markup=kb)
+            # Сначала фото
+            await message.answer_photo(image_url)
+        
+        # Потом текст (лимит 4096 символов, этого точно хватит)
+        await message.answer(recipe, reply_markup=kb)
         
         state_manager.clear_history(user_id)
     except Exception as e:
