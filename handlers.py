@@ -12,8 +12,10 @@ voice_processor = VoiceProcessor()
 groq_service = GroqService()
 image_service = ImageService()
 
-# --- КЛАВИАТУРА ВЫБОРА СТИЛЯ ---
+# --- ВСПОМОГАТЕЛЬНЫЕ КЛАВИАТУРЫ ---
+
 def get_style_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура выбора стиля"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🏠 Простое / Домашнее", callback_data="style_ordinary"),
@@ -21,19 +23,27 @@ def get_style_keyboard() -> InlineKeyboardMarkup:
         ]
     ])
 
+def get_restart_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой рестарта"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Заново", callback_data="restart")]
+    ])
+
+# --- ХЭНДЛЕРЫ ---
+
 async def cmd_start(message: Message):
     user_id = message.from_user.id
     state_manager.clear_history(user_id)
     await message.answer(
         "👋 Здравствуйте.\n\n"
         "🎤 Отправьте голосовое или текстовое сообщение с перечнем продуктов, и я подскажу, что из них можно приготовить.\n"
-        "📝 Или напишите "Дай рецепт ..."\n"
+        '📝 Или напишите "Дай рецепт [блюдо]".',
+        parse_mode="HTML"
     )
 
-# --- НОВЫЙ ХЭНДЛЕР: АВТОР ---
 async def cmd_author(message: Message):
     await message.answer(
-        "👨‍💻 <b>Автор бота:</b> @inikonoff",
+        "👨‍💻 <b>Разработчик бота:</b> @inikonoff",
         parse_mode="HTML"
     )
 
@@ -76,7 +86,6 @@ async def handle_voice(message: Message):
         text = await voice_processor.process_voice(temp_file)
         await processing_msg.delete()
         
-        # Если история пустая -> это первый список продуктов
         history = state_manager.get_history(user_id)
         if not history:
             await handle_initial_products(message, user_id, text)
@@ -117,8 +126,12 @@ async def handle_style_selection_callback(callback: CallbackQuery):
     try:
         response = await groq_service.generate_dishes(products, style=style_name)
         state_manager.add_message(user_id, "bot", response)
+        
         await callback.message.delete()
-        await callback.message.answer(response)
+        
+        # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем кнопку "Заново" под списком блюд ---
+        await callback.message.answer(response, reply_markup=get_restart_keyboard())
+        
     except Exception as e:
         await callback.message.edit_text(f"Ошибка нейросети: {e}")
 
@@ -155,7 +168,8 @@ async def handle_dish_selection(message: Message, user_id: int, dish_name: str):
         
         await wait_msg.delete()
         
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 Заново", callback_data="restart")]])
+        # Используем хелпер для клавиатуры
+        kb = get_restart_keyboard()
         
         if image_url:
             await message.answer_photo(image_url, caption=recipe[:1024], reply_markup=kb)
@@ -176,7 +190,10 @@ async def handle_add_products(message: Message, user_id: int, new_products: str)
         response = await groq_service.generate_dishes(all_products, style="с учетом новых продуктов")
         state_manager.add_message(user_id, "bot", response)
         await wait_msg.delete()
-        await message.answer(response)
+        
+        # Здесь тоже можно добавить кнопку рестарта, чтобы было удобно
+        await message.answer(response, reply_markup=get_restart_keyboard())
+        
     except Exception as e:
         await wait_msg.delete()
         await message.answer(f"Ошибка: {e}")
@@ -187,7 +204,6 @@ async def handle_restart(callback: CallbackQuery):
     await callback.answer()
 
 def register_handlers(dp: Dispatcher):
-    # Регистрируем команды меню
     dp.message.register(cmd_start, Command("start"))
     dp.message.register(cmd_author, Command("author"))
     
