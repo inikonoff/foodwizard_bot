@@ -7,6 +7,8 @@ class StateManager:
     def __init__(self):
         # Словарь для хранения истории: {user_id: [messages]}
         self.user_history: Dict[int, List[Dict]] = {}
+        # Словарь для хранения текущего статуса: {user_id: "status_name"}
+        self.user_states: Dict[int, str] = {}
     
     def add_message(self, user_id: int, role: str, text: str):
         """Добавляет сообщение в историю пользователя"""
@@ -56,17 +58,21 @@ class StateManager:
         """Очищает историю пользователя"""
         if user_id in self.user_history:
             del self.user_history[user_id]
+
+    # --- МЕТОДЫ ДЛЯ СТАТУСОВ (которых не хватало) ---
     
-    def get_context_for_groq(self, user_id: int) -> str:
-        """Формирует контекст для передачи в Groq"""
-        history = self.get_history(user_id)
-        
-        context_parts = []
-        for msg in history:
-            role_label = "Пользователь" if msg["role"] == "user" else "Бот"
-            context_parts.append(f"{role_label}: {msg['text']}")
-        
-        return "\n\n".join(context_parts)
+    def set_state(self, user_id: int, state: str):
+        """Устанавливает статус (например, 'recipe_sent')"""
+        self.user_states[user_id] = state
+
+    def get_state(self, user_id: int) -> Optional[str]:
+        """Получает текущий статус"""
+        return self.user_states.get(user_id)
+
+    def clear_state(self, user_id: int):
+        """Сбрасывает статус"""
+        if user_id in self.user_states:
+            del self.user_states[user_id]
 
 # Глобальный экземпляр менеджера состояний
 state_manager = StateManager()
