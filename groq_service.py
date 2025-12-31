@@ -39,7 +39,7 @@ class GroqService:
 
     @staticmethod
     async def analyze_categories(products: str) -> List[str]:
-        """Определяет категории блюд. Добавлена логика базовых продуктов и супов."""
+        """Определяет категории блюд на основе продуктов."""
         prompt = (
             "Analyze ingredients and return ONLY a JSON array of keys from this list: "
             "['soup', 'main', 'salad', 'breakfast', 'dessert', 'drink', 'snack'].\n\n"
@@ -57,17 +57,17 @@ class GroqService:
 
     @staticmethod
     async def generate_dishes_list(products: str, category: str, style: str = "обычный", lang_code: str = "ru") -> List[Dict[str, str]]:
-        """Генерирует список блюд с нативными названиями для кнопок."""
         is_ru = lang_code[:2].lower() == "ru"
         target_lang = "Russian" if is_ru else "the user's interface language"
 
+        # ИСПРАВЛЕНО: Правильное закрытие f-строки и форматирование списка
         system_prompt = (
             f"You are a creative chef. Suggest 4-6 dishes in category '{category}'.\n"
             f"STRICT LANGUAGE RULES:\n"
             f"1. Field 'name': Use the NATIVE language of the dish (e.g., 'Insalata Estiva' or 'Pollo alla Cacciatora'). This is for buttons.\n"
             f"2. Field 'desc': Write the description strictly in {target_lang}.\n"
-            f"3. Field 'display_name': If the user language is Russian and input is foreign, format as: 'Original Name (Russian Translation)'.\n
-            f"4. Always assume basics (water, salt, oil, sugar, pepper) are available."
+            f"3. Field 'display_name': If the user language is Russian and input is foreign, format as: 'Original Name (Russian Translation)'.\n"
+            f"4. Always assume basics (water, salt, oil, sugar, pepper) are available.\n"
             f"5. If the ingredients allow for making a liquid dish (soup/broth) using water, ALWAYS include 'soup' in the list.\n"
             f"Return ONLY JSON list: [{{'name': '...', 'display_name': '...', 'desc': '...'}}]."
         )
@@ -80,7 +80,7 @@ class GroqService:
 
     @staticmethod
     async def generate_recipe(dish_name: str, products: str, lang_code: str = "ru") -> str:
-        """Генерация экспертного рецепта. Название блюда остается СТРОГО нативном языке."""
+        """Генерация экспертного рецепта."""
         languages = {"ru": "Russian", "en": "English", "es": "Spanish", "fr": "French", "de": "German"}
         target_lang = languages.get(lang_code[:2].lower(), "Russian")
 
@@ -120,7 +120,7 @@ class GroqService:
 
         res = await GroqService._send_groq_request(system_prompt, f"Dish: {dish_name}. Ingredients: {products}", 0.3)
         
-        farewell = {"ru": "Приятного аппетита!", "en": "Bon appétit!", "es": "¡Buen provecho!"}
+        farewell = {"ru": "Приятного аппетита!", "en": "Bon appetite!", "es": "¡Buen provecho!"}
         bon = farewell.get(lang_code[:2].lower(), "Приятного аппетита!")
 
         if GroqService._is_refusal(res): return res
