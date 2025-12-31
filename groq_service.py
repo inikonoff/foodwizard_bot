@@ -73,7 +73,7 @@ class GroqService:
 
     @staticmethod
     async def generate_recipe(dish_name: str, products: str, lang_code: str = "ru") -> str:
-        """Генерация экспертного рецепта с адаптивными единицами измерения и оригинальным названием."""
+        """Генерация экспертного рецепта с адаптивными единицами измерения и обновленным блоком пищевой ценности."""
         languages = {"ru": "Russian", "en": "English", "es": "Spanish", "fr": "French", "de": "German"}
         target_lang = languages.get(lang_code[:2].lower(), "Russian")
 
@@ -87,25 +87,27 @@ class GroqService:
             f"   - Garlic: cloves (зубчика).\n"
             f"   - Vegetables (carrots, beets, onions, etc.): pieces (шт.).\n"
             f"   - Format each line exactly as: '- ingredient - amount'.\n"
-            f"4. KBHU: You MUST calculate numerical values per serving. Display nutritional information in the EXACT format with emojis:\n"
-            f"   Энергетическая ценность: ⚡ X ккал\n"
+            f"4. NUTRITION: You MUST calculate numerical values per serving. Use the EXACT following format with emojis (no KBHU abbreviation):\n"
+            f"   📊 Пищевая ценность на 1 порцию:\n"
             f"   🥚 Белки: X г\n"
             f"   🥑 Жиры: X г\n"
             f"   🌾 Углеводы: X г\n"
+            f"   ⚡ Энерг. ценность: X ккал\n"
             f"5. TIME & INFO: Display time, difficulty and servings in separate lines with emojis:\n"
-            f"   ⏱ Время: X minutes/minutes/минут\n"
-            f"   🎚 Сложность: easy/medium/hard or низкая/средняя/высокая\n"
-            f"   👥 Порции: X person/people/человек/человека\n"
+            f"   ⏱ Время: X минут\n"
+            f"   🎚 Сложность: низкая/средняя/высокая\n"
+            f"   👥 Порции: X человек\n"
             f"6. LOCALIZATION: Steps and labels MUST be in {target_lang}.\n"
             f"7. NO EMOJIS inside ingredient list or cooking steps. No formatting like '**' in steps.\n"
             f"8. CULINARY TRIAD: Add 'Chef's Advice' (Taste, Aroma, Texture). Recommend EXACTLY ONE missing item.\n\n"
             f"STRUCTURE IN {target_lang.upper()}:\n"
             "🥘 [Original Native Name]\n\n"
             "📦 Ингредиенты:\n[List formatted as '- item - amount']\n\n"
-            "Энергетическая ценность: ⚡ X ккал\n"
+            "📊 Пищевая ценность на 1 порцию:\n"
             "🥚 Белки: X г\n"
             "🥑 Жиры: X г\n"
-            "🌾 Углеводы: X г\n\n"
+            "🌾 Углеводы: X г\n"
+            "⚡ Энерг. ценность: X ккал\n\n"
             "⏱ Время: X минут\n"
             "🎚 Сложность: средняя\n"
             "👥 Порции: X человек\n\n"
