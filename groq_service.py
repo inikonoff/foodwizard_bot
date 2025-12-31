@@ -28,6 +28,21 @@ class GroqService:
             return ""
 
     @staticmethod
+    async def determine_intent(text: str, last_context: str = "") -> Dict[str, str]:
+        """Определяет намерение пользователя: ввод продуктов или запрос конкретного блюда."""
+        prompt = (
+            "Analyze the user input. Determine if they are providing a list of ingredients "
+            "or asking for a specific recipe by name.\n"
+            "Return ONLY JSON: {\"intent\": \"ingredients\"} or {\"intent\": \"recipe\", \"dish\": \"name\"}."
+        )
+        res = await GroqService._send_groq_request(prompt, text, 0.1)
+        try:
+            clean_json = re.search(r'\{.*\}', res, re.DOTALL).group()
+            return json.loads(clean_json)
+        except:
+            return {"intent": "ingredients"}
+
+    @staticmethod
     async def validate_ingredients(text: str) -> bool:
         """Модерация ввода: только продукты."""
         prompt = (
@@ -62,7 +77,6 @@ class GroqService:
         is_ru = lang_code[:2].lower() == "ru"
         target_lang = "Russian" if is_ru else "the user's interface language"
 
-        # ИСПРАВЛЕНО: Закрытие строк, запятые и экранирование скобок {{ }}
         system_prompt = (
             f"You are a creative chef. Suggest 4-6 dishes in category '{category}'.\n"
             f"STRICT LANGUAGE RULES:\n"
