@@ -53,10 +53,6 @@ class GroqService:
 
     @staticmethod
     async def generate_dishes_list(products: str, category: str, style: str = "обычный", lang_code: str = "ru") -> List[Dict[str, str]]:
-        """
-        Генерирует список названий блюд на нативном языке (для кнопок), 
-        но описание и отображение (display_name) на языке локализации.
-        """
         is_ru = lang_code[:2].lower() == "ru"
         target_lang = "Russian" if is_ru else "the user's interface language"
 
@@ -77,32 +73,37 @@ class GroqService:
 
     @staticmethod
     async def generate_recipe(dish_name: str, products: str, lang_code: str = "ru") -> str:
-        """Генерация экспертного рецепта с обязательным расчетом КБЖУ."""
+        """Генерация экспертного рецепта с адаптивными единицами измерения и оригинальным названием."""
         languages = {"ru": "Russian", "en": "English", "es": "Spanish", "fr": "French", "de": "German"}
         target_lang = languages.get(lang_code[:2].lower(), "Russian")
 
         system_prompt = (
             f"You are a professional chef. Write a detailed recipe strictly in {target_lang}.\n\n"
             f"STRICT RULES:\n"
-            f"1. SILENT EXCLUSION: Do not mention or list any provided ingredients that are NOT used in this recipe.\n"
-            f"2. INGREDIENT LIST FORMAT: Format each line exactly as: '- ingredient - amount'. Example: '- картофель - 300 г'.\n"
-            f"3. KBHU CALCULATION: You MUST calculate and provide specific numerical values for Calories, Proteins, Fats, and Carbs PER SERVING based on the ingredients used. FORMAT: each line exactly as: 'Calories - amount' etc.Do not use vague phrases like 'to be clarified'. Provide estimated digits in a separate line (e.g., 'Энергеттческая ценность: 450 ккал, Белки: 20г, Жиры: 15г, Углеводы: 40г').\n"
-            f"4. LOCALIZATION: All parts (Title, Labels, Ingredients, Steps) MUST be in {target_lang}.\n"
-            f"5. SMART SUBSTITUTES: Use logical substitutes from the user list if needed.\n"
-            f"6. NO EMOJIS inside ingredient list or steps. No checkmarks. No formatting like '**' in steps.\n"
-            f"7. CULINARY TRIAD: Add 'Chef's Advice' section analyzing Taste, Aroma, Texture. Recommend EXACTLY ONE missing item to finish the triad.\n\n"
+            f"1. NAME: Always use the ORIGINAL native name of the dish (e.g., 'Pasta Carbonara', 'Tortilla de Patatas') regardless of localization.\n"
+            f"2. SILENT EXCLUSION: Do not mention ingredients that are NOT used.\n"
+            f"3. INGREDIENT UNITS: Use realistic kitchen measurements. Most items in grams, BUT:\n"
+            f"   - Oils/liquids: tablespoons (ст. л.) or teaspoons (ч. л.).\n"
+            f"   - Garlic: cloves (зубчика).\n"
+            f"   - Vegetables (carrots, beets, onions, etc.): pieces (шт.).\n"
+            f"   - Format each line exactly as: '- ingredient - amount'.\n"
+            f"4. KBHU: You MUST calculate numerical values per serving. Use the label 'Энергетическая ценность' instead of 'Калории'.\n"
+            f"   Example: 'Энергетическая ценность: 450 ккал, Белки: 20 г, Жиры: 15 г, Углеводы: 40 г'.\n"
+            f"5. LOCALIZATION: Steps and labels MUST be in {target_lang}.\n"
+            f"6. NO EMOJIS inside ingredient list or steps. No formatting like '**' in steps.\n"
+            f"7. CULINARY TRIAD: Add 'Chef's Advice' (Taste, Aroma, Texture). Recommend EXACTLY ONE missing item.\n\n"
             f"STRUCTURE IN {target_lang.upper()}:\n"
-            "🥘 [Original Dish Name]\n\n"
+            "🥘 [Original Native Name]\n\n"
             "📦 Ингредиенты:\n[List formatted as '- item - amount']\n\n"
-            "📊 КБЖУ на порцию:\n[Numerical data only, e.g., Калории: X ккал, Б: X г, Ж: X г, У: X г]\n\n"
-            "⏱ Время \n 📈 Сложность \n 👥 Порции\n\n"
+            "📊 КБЖУ на порцию:\nЭнергетическая ценность: X ккал, Б: X г, Ж: X г, У: X г\n\n"
+            "⏱ Время | 📈 Сложность | 👥 Порции\n\n"
             "🔪 Приготовление:\n[Steps without formatting]\n\n"
             "💡 Совет шеф-повара:\n[Triad Analysis]"
         )
 
         res = await GroqService._send_groq_request(system_prompt, f"Dish: {dish_name}. Ingredients: {products}", 0.3)
         
-        farewell = {"ru": "Приятного аппетита!", "en": "Bon appétit!", "es": "¡Buen provecho!", "fr": "Bon appétit!"}
+        farewell = {"ru": "Приятного аппетита!", "en": "Bon appétit!", "es": "¡Buen provecho!"}
         bon = farewell.get(lang_code[:2].lower(), "Приятного аппетита!")
 
         if GroqService._is_refusal(res): return res
@@ -110,14 +111,9 @@ class GroqService:
 
     @staticmethod
     async def generate_freestyle_recipe(dish_name: str, lang_code: str = "ru") -> str:
-        """Свободные/метафорические рецепты."""
         languages = {"ru": "Russian", "en": "English", "es": "Spanish"}
         target_lang = languages.get(lang_code[:2].lower(), "Russian")
-        
-        prompt = (
-            f"Write in {target_lang}. Food -> Recipe. Abstraction -> Metaphorical recipe. "
-            "Safety: If dangerous/prohibited, return ONLY: '⛔ Извините, я готовлю только еду.'"
-        )
+        prompt = f"Write in {target_lang}. If food -> recipe. If abstraction -> metaphorical recipe. Safety: return '⛔ Извините, я готовлю только еду' if unsafe."
         res = await GroqService._send_groq_request(prompt, dish_name, 0.7)
         return res
 
