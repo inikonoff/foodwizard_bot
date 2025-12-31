@@ -77,7 +77,7 @@ class GroqService:
 
     @staticmethod
     async def generate_recipe(dish_name: str, products: str, lang_code: str = "ru") -> str:
-        """Генерация экспертного рецепта с красивым перечислением ингредиентов."""
+        """Генерация экспертного рецепта с обязательным расчетом КБЖУ."""
         languages = {"ru": "Russian", "en": "English", "es": "Spanish", "fr": "French", "de": "German"}
         target_lang = languages.get(lang_code[:2].lower(), "Russian")
 
@@ -85,17 +85,16 @@ class GroqService:
             f"You are a professional chef. Write a detailed recipe strictly in {target_lang}.\n\n"
             f"STRICT RULES:\n"
             f"1. SILENT EXCLUSION: Do not mention or list any provided ingredients that are NOT used in this recipe.\n"
-            f"2. INGREDIENT LIST FORMAT: Use a clean list. Format each line as: '- ingredient - amount (mass/volume/quantity)'. "
-            f"Example: '- картофель - 300 г', '- сливки - 100 мл', '- морковь - 2 шт'.\n"
-            f"3. LOCALIZATION: All parts (Title, Labels, Ingredients, Steps) MUST be in {target_lang}.\n"
-            f"4. SMART SUBSTITUTES: Use logical substitutes from the user list if needed.\n"
-            f"5. NO EMOJIS inside ingredient list or steps. No checkmarks. No formatting like '**' in steps.\n"
-            f"6. KBHU: Estimated data PER SERVING.\n"
+            f"2. INGREDIENT LIST FORMAT: Format each line exactly as: '- ingredient - amount'. Example: '- картофель - 300 г'.\n"
+            f"3. KBHU CALCULATION: You MUST calculate and provide specific numerical values for Calories, Proteins, Fats, and Carbs PER SERVING based on the ingredients used. Do not use vague phrases like 'to be clarified'. Provide estimated digits (e.g., '450 ккал, Б: 20г, Ж: 15г, У: 40г').\n"
+            f"4. LOCALIZATION: All parts (Title, Labels, Ingredients, Steps) MUST be in {target_lang}.\n"
+            f"5. SMART SUBSTITUTES: Use logical substitutes from the user list if needed.\n"
+            f"6. NO EMOJIS inside ingredient list or steps. No checkmarks. No formatting like '**' in steps.\n"
             f"7. CULINARY TRIAD: Add 'Chef's Advice' section analyzing Taste, Aroma, Texture. Recommend EXACTLY ONE missing item to finish the triad.\n\n"
             f"STRUCTURE IN {target_lang.upper()}:\n"
             "🥘 [Translated Dish Name]\n\n"
             "📦 Ингредиенты:\n[List formatted as '- item - amount']\n\n"
-            "📊 КБЖУ на порцию:\n[Data]\n\n"
+            "📊 КБЖУ на порцию:\n[Numerical data only, e.g., Калории: X, Б: Xг, Ж: Xг, У: Xг]\n\n"
             "⏱ Время | 📈 Сложность | 👥 Порции\n\n"
             "🔪 Приготовление:\n[Steps without formatting]\n\n"
             "💡 Совет шеф-повара:\n[Triad Analysis]"
