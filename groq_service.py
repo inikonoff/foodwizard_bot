@@ -10,6 +10,17 @@ logger = logging.getLogger(__name__)
 
 class GroqService:
     
+    LANG_CODES = {
+        'ru': 'Russian', 'en': 'English', 'es': 'Spanish',
+        'fr': 'French', 'de': 'German', 'it': 'Italian'
+    }
+    
+    BASIC_INGREDIENTS = {
+        'ru': ['вода', 'соль', 'растительное масло', 'сахар', 'перец', 'лед'],
+        'en': ['water', 'salt', 'vegetable oil', 'sugar', 'pepper', 'ice'],
+        'es': ['agua', 'sal', 'aceite vegetal', 'azúcar', 'pimienta', 'hielo']
+    }
+    
     @staticmethod
     async def _send_groq_request(system_prompt: str, user_text: str, temperature: float = 0.5, max_tokens: int = 1500) -> str:
         try:
@@ -28,109 +39,138 @@ class GroqService:
             return ""
 
     @staticmethod
+    def _extract_json(text: str) -> Union[Dict, List, None]:
+        """Универсальный и безопасный извлекатель JSON."""
+        if not text: return None
+        try:
+            # Поиск самого широкого блока
+            start_idx = min([text.find(c) for c in '{[' if text.find(c) != -1] or [-1])
+            if start_idx == -1: return None
+            end_char = '}' if text[start_idx] == '{' else ']'
+            end_idx = text.rfind(end_char)
+            if end_idx == -1: return None
+            return json.loads(text[start_idx:end_idx + 1])
+        except:
+            # Fallback через регулярку
+            match = re.search(r'(?s)(\{.*\}|\[.*\])', text)
+            if match:
+                try: return json.loads(match.group())
+                except: return None
+        return None
+
+    @staticmethod
+    def _detect_input_language(text: str) -> str:
+        """Определяет язык ввода для подбора базовых продуктов."""
+        text_l = text.lower()
+        markers = {
+            'ru': ['карто', 'лук', 'морков', 'соль', 'сахар'],
+            'en': ['potato', 'onion', 'carrot', 'salt', 'sugar']
+        }
+        for lang, kws in markers.items():
+            if any(kw in text_l for kw in kws): return lang
+        return 'ru'
+
+    @staticmethod
     async def determine_intent(text: str, last_context: str = "") -> Dict[str, str]:
-        """Определяет намерение пользователя: продукты или конкретное блюдо."""
+        """Определяет намерение: продукты или рецепт конкретного блюда."""
+        input_lang = GroqService._detect_input_language(text)
         prompt = (
-            "Analyze input. Return ONLY JSON: {\"intent\": \"ingredients\"} or {\"intent\": \"recipe\", \"dish\": \"name\"}."
+            "Analyze input. Return ONLY JSON: "
+            "{\"intent\": \"ingredients\"} or {\"intent\": \"recipe\", \"dish\": \"name\"}."
         )
         res = await GroqService._send_groq_request(prompt, text, 0.1)
-        try:
-            clean_json = re.search(r'\{.*\}', res, re.DOTALL).group()
-            return json.loads(clean_json)
-        except:
-            return {"intent": "ingredients"}
+        data = GroqService._extract_json(res)
+        
+        if not data or "intent" not in data:
+            # Fallback на ключевые слова
+            if any(kw in text.lower() for kw in ['рецепт', 'recipe', 'как приготовить']):
+                return {"intent": "recipe", "dish": text, "input_lang": input_lang}
+            return {"intent": "ingredients", "input_lang": input_lang}
+        
+        data["input_lang"] = input_lang
+        return data
 
     @staticmethod
     async def validate_ingredients(text: str) -> bool:
-        """Модерация ввода: только продукты."""
-        prompt = (
-            "You are a food safety moderator. Return ONLY JSON: {\"valid\": true} if input is food, "
-            "otherwise {\"valid\": false}. Ignore language."
-        )
+        prompt = "Return ONLY JSON: {\"valid\": true} if input is food items, else {\"valid\": false}."
         res = await GroqService._send_groq_request(prompt, text, 0.1)
-        return "true" in res.lower()
+        data = GroqService._extract_json(res)
+        return data.get("valid", True) if data else True
 
     @staticmethod
     async def analyze_categories(products: str) -> List[str]:
-        """Определяет категории блюд на основе продуктов."""
+        input_lang = GroqService._detect_input_language(products)
+        basics = GroqService.BASIC_INGREDIENTS.get(input_lang, GroqService.BASIC_INGREDIENTS['ru'])
+        
         prompt = (
-            "Analyze ingredients and return ONLY a JSON array of keys: "
-            "['soup', 'main', 'salad', 'breakfast', 'dessert', 'drink', 'snack'].\n\n"
-            "STRICT RULES:\n"
-            "1. Always assume basics: water, salt, oil, sugar, pepper, ice.\n"
-            "2. If fruits/berries + (water/milk/sugar/ice) are possible, ALWAYS include 'drink'.\n"
-            "3. If flour/eggs/sugar/fruits are present, ALWAYS include 'dessert' and 'breakfast'.\n"
-            "4. If you can make 2 or more dishes in any category, then suggest at least 3 categories."
+            f"Analyze ingredients: {products}. Basics available: {basics}. "
+            "Return ONLY JSON array of keys from: ['soup', 'main', 'salad', 'breakfast', 'dessert', 'drink', 'snack']. "
+            "RULES: 1. Fruit/ice -> 'drink'. 2. Flour/sugar/fruit -> 'dessert', 'breakfast'. 3. Min 3 categories."
         )
-        res = await GroqService._send_groq_request(prompt, products, 0.2)
-        try:
-            clean_json = re.search(r'\[.*\]', res, re.DOTALL).group()
-            return json.loads(clean_json)
-        except:
-            return ["main", "snack"]
+        res = await GroqService._send_groq_request(prompt, "", 0.2)
+        data = GroqService._extract_json(res)
+        return data if isinstance(data, list) else ["main", "snack"]
 
     @staticmethod
-    async def generate_dishes_list(products: str, category: str, style: str = "обычный", lang_code: str = "ru") -> List[Dict[str, str]]:
-        is_ru = lang_code[:2].lower() == "ru"
-        target_lang = "Russian" if is_ru else "the user's interface language"
-
+    async def generate_dishes_list(products: str, category: str, style: str = "обычный", 
+                                   interface_lang: str = "ru", input_lang: str = "ru") -> List[Dict[str, str]]:
+        target_lang = GroqService.LANG_CODES.get(interface_lang, 'Russian')
+        
         system_prompt = (
-            f"You are a creative chef. Suggest 4-6 dishes in category '{category}'.\n"
-            f"STRICT LANGUAGE RULES:\n"
-            f"1. Field 'name': Use the NATIVE language of the dish (e.g., 'Insalata Estiva').\n"
-            f"2. Field 'desc': Write strictly in {target_lang}.\n"
-            f"3. Field 'display_name': If the user language is Russian and dish is foreign, format as: 'Original Name (Russian Translation)'.\n"
-            f"4. Always assume basics (water, salt, oil, sugar, pepper, ice) are available.\n"
+            f"Chef mode. Suggest 4-6 dishes in category '{category}'. "
+            f"RULES: 1. 'name': Native language. 2. 'desc': {target_lang}. "
+            f"3. 'display_name': 'Original (Translation)' ONLY if original is not {target_lang}. "
             f"Return ONLY JSON list: [{{'name': '...', 'display_name': '...', 'desc': '...'}}]."
         )
-        res = await GroqService._send_groq_request(system_prompt, f"Ingredients: {products}, Category: {category}", 0.6)
-        try:
-            clean_json = re.search(r'\[.*\]', res, re.DOTALL).group()
-            return json.loads(clean_json)
-        except:
-            return []
+        res = await GroqService._send_groq_request(system_prompt, f"Ingredients: {products}", 0.6)
+        data = GroqService._extract_json(res)
+        return data if isinstance(data, list) else []
 
     @staticmethod
-    async def generate_recipe(dish_name: str, products: str, lang_code: str = "ru") -> str:
-        """Генерация экспертного рецепта на основе вашей стабильной базы."""
-        languages = {"ru": "Russian", "en": "English", "es": "Spanish"}
-        target_lang = languages.get(lang_code[:2].lower(), "Russian")
+    async def generate_recipe(dish_name: str, products: str, interface_lang: str = "ru", input_lang: str = "ru") -> str:
+        """Генерация рецепта с Триадой: Вкус, Аромат, Текстура."""
+        target_lang = GroqService.LANG_CODES.get(interface_lang, 'Russian')
+        basics = GroqService.BASIC_INGREDIENTS.get(interface_lang, GroqService.BASIC_INGREDIENTS['ru'])
+        
+        system_prompt = f"""You are a professional chef. Write a recipe in {target_lang}.
+        
+        STRICT RULES:
+        1. NAME: Original Native name in header.
+        2. INGREDIENTS: Bilingual format 'Native (Translation) - amount' ONLY if native is not {target_lang}. Else 'Name - amount'.
+        3. SILENT EXCLUSION: Never mention or explain why an ingredient from the user list is NOT used.
+        4. CULINARY TRIAD (Chef's Tip): Analyze the dish by TASTE, AROMA, and TEXTURE. 
+           Recommend exactly one missing item from Culinary Trinity or French Mirepoix to improve the triad.
+        5. NO EMOJIS in steps. No bold '**' formatting in steps.
 
-        system_prompt = (
-            f"You are a professional chef. Write a detailed recipe strictly in {target_lang}.\n\n"
-            f"STRICT RULES:\n"
-            f"1. NAME: Always use the ORIGINAL NATIVE name in the header. NEVER translate it.\n"
-            f"2. INGREDIENTS (Bilingual): If an ingredient is foreign, use: 'Native (Russian Translation) - amount'. "
-            f"If it's already in Russian, just write 'Ингредиент - количество'. No double brackets.\n"
-            f"3. SILENT EXCLUSION: Do not mention ingredients that are NOT used. Do not explain why something is excluded.\n"
-            f"4. INGREDIENT UNITS: Use: ст. л., ч. л., зубчика, шт., г.\n"
-            f"5. NUTRITION: Calculate per serving. Format EXACTLY:\n"
-            f"   📊 Пищевая ценность на 1 порцию:\n"
-            f"   🥚 Белки: X г\n"
-            f"   🥑 Жиры: X г\n"
-            f"   🌾 Углеводы: X г\n"
-            f"   ⚡ Энерг. ценность: X ккал\n"
-            f"6. NO EMOJIS in steps or ingredient list. No '**' in steps.\n"
-            f"7. CULINARY TRIAD: Add 'Chef's Advice' (Taste, Aroma, Texture). Recommend EXACTLY ONE missing item from Culinary Trinity or French Mirepoix.\n\n"
-            "STRUCTURE:\n"
-            "🥘 [Original Native Name]\n\n"
-            "📦 Ингредиенты:\n[List]\n\n"
-            "📊 Пищевая ценность на 1 порцию:\n"
-            "🥚 Белки: X г...\n\n"
-            "⏱ Время | 🎚 Сложность | 👥 Порции\n\n"
-            "🔪 Приготовление:\n[Steps]\n\n"
-            "💡 Совет шеф-повара:\n[Triad Analysis]"
-        )
+        STRUCTURE:
+        🥘 [Original Name]
+        
+        📦 ИНГРЕДИЕНТЫ:
+        - [List]
+        
+        📊 ПИЩЕВАЯ ЦЕННОСТЬ (1 порция):
+        🥚 Белки: X г | 🥑 Жиры: X г | 🌾 Углеводы: X г | ⚡ Калории: X ккал
+        
+        ⏱ Время: X мин | 🎚 Сложность: X/5 | 👥 Порции: X
+        
+        🔪 ПРИГОТОВЛЕНИЕ:
+        [Numbered steps]
 
-        res = await GroqService._send_groq_request(system_prompt, f"Dish: {dish_name}. Ingredients: {products}", 0.3)
-        bon = "Приятного аппетита!" if lang_code == "ru" else "Bon appetite!"
-        return f"{res}\n\n👨‍🍳 <b>{bon}</b>"
+        💡 СОВЕТ ШЕФА (КУЛИНАРНАЯ ТРИАДА):
+        [Professional analysis of Taste, Aroma, Texture]"""
+        
+        res = await GroqService._send_groq_request(system_prompt, f"Dish: {dish_name}. Products: {products}", 0.3)
+        
+        farewells = {'ru': 'Приятного аппетита!', 'en': 'Bon appétit!'}
+        bon = farewells.get(interface_lang, "Bon appétit!")
+        return f"{res}\n\n👨‍🍳 **{bon}**"
 
     @staticmethod
-    async def generate_freestyle_recipe(dish_name: str, lang_code: str = "ru") -> str:
-        prompt = "Write a recipe. Safety: return '⛔' if unsafe."
-        return await GroqService._send_groq_request(prompt, dish_name, 0.7)
+    async def generate_freestyle_recipe(dish_name: str, interface_lang: str = "ru") -> str:
+        prompt = f"Write recipe for {dish_name} in {GroqService.LANG_CODES.get(interface_lang)}. Safety: return ⛔ if unsafe."
+        res = await GroqService._send_groq_request(prompt, "", 0.7)
+        return res if "⛔" not in res else "⛔ Некорректный запрос."
 
     @staticmethod
     def _is_refusal(text: str) -> bool:
-        return any(ph in text.lower() for ph in ["cannot fulfill", "извините", "⛔"])
+        return any(p in text.lower() for p in ["cannot fulfill", "извините", "⛔"])
