@@ -86,7 +86,7 @@ class GroqService:
             f"STRICT RULES:\n"
             f"1. SILENT EXCLUSION: Do not mention or list any provided ingredients that are NOT used in this recipe.\n"
             f"2. INGREDIENT LIST FORMAT: Format each line exactly as: '- ingredient - amount'. Example: '- картофель - 300 г'.\n"
-            f"3. KBHU CALCULATION: You MUST calculate and provide specific numerical values for Calories, Proteins, Fats, and Carbs PER SERVING based on the ingredients used. FORMAT: each line exactly as: 'Calories - amount' etc.Do not use vague phrases like 'to be clarified'. Provide estimated digits (e.g., '450 ккал, Б: 20г, Ж: 15г, У: 40г').\n"
+            f"3. KBHU CALCULATION: You MUST calculate and provide specific numerical values for Calories, Proteins, Fats, and Carbs PER SERVING based on the ingredients used. FORMAT: each line exactly as: 'Calories - amount' etc.Do not use vague phrases like 'to be clarified'. Provide estimated digits in a separate line (e.g., 'Энергеттческая ценность: 450 ккал, Белки: 20г, Жиры: 15г, Углеводы: 40г').\n"
             f"4. LOCALIZATION: All parts (Title, Labels, Ingredients, Steps) MUST be in {target_lang}.\n"
             f"5. SMART SUBSTITUTES: Use logical substitutes from the user list if needed.\n"
             f"6. NO EMOJIS inside ingredient list or steps. No checkmarks. No formatting like '**' in steps.\n"
