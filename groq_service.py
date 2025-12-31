@@ -63,14 +63,14 @@ class GroqService:
             "If ingredients include fruits/berries + (water/milk/cream/sugar/ice), ALWAYS include 'drink'. "
             "If liquid dish with water + veggies/meat, include 'soup'.\n"
             "2. If the ingredients allow for making a liquid dish (soup/broth) using water, ALWAYS include 'soup' in the keys.\n"
-            "3. If very few ingredients, return only the most suitable category."
+            "3. Return at least 3 categories if the ingredients allow for variety (e.g., breakfast, dessert, main)."
         )
         res = await GroqService._send_groq_request(prompt, products, 0.2)
         try:
             clean_json = re.search(r'\[.*\]', res, re.DOTALL).group()
             return json.loads(clean_json)
         except:
-            return ["main"]
+            return ["main", "snack"]
 
     @staticmethod
     async def generate_dishes_list(products: str, category: str, style: str = "обычный", lang_code: str = "ru") -> List[Dict[str, str]]:
