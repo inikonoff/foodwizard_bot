@@ -104,15 +104,11 @@ class GroqService:
         2. INGREDIENTS:
            - Detect the language of each input ingredient.
            - If it is in {target_lang}, format as: '- Original - amount'.
+           - No brackets and no translations if input ingredients are in {target_lang}
            - If it's NOT in {target_lang}, format as: '- Original (Translation) - amount'.
            - Example: '- Pollo (Курица) - 1 кг'.
            - Example: '- Курица - 1 кг' (if original is already in Russian).
-        3. NUTRITION: Calculate per serving with emojis: 📊, 🥚, 🥑, 🌾, ⚡. Format EXACTLY:
-           📊 Пищевая ценность на 1 порцию:
-           🥚 Белки: X г
-           🥑 Жиры: X г
-           🌾 Углеводы: X г
-           ⚡ Энерг. ценность: X ккал
+        3. NUTRITION: Calculate per serving with emojis: 📊, 🥚, 🥑, 🌾, ⚡. Format EXACTLY
         4. CULINARY TRIAD: End with '💡 Совет шеф-повара (Кулинарная триада)'. 
            Analyze Taste, Aroma, and Texture. Recommend one missing item for balance.
         5. NO BOLD text in steps.
@@ -130,6 +126,12 @@ class GroqService:
         🔪 Приготовление:
         [Steps]
         
+        📊 Пищевая ценность на 1 порцию:
+           🥚 Белки: X г
+           🥑 Жиры: X г
+           🌾 Углеводы: X г
+           ⚡ Энерг. ценность: X ккал
+
         💡 Совет шеф-повара (Кулинарная триада):
         [Analysis]"""
 
