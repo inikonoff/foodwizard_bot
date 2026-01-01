@@ -81,7 +81,7 @@ class GroqService:
         STRICT LANGUAGE RULES:
         1. Field 'name': Use the NATIVE language of the dish (e.g., 'Insalata Estiva' or 'Pollo alla Cacciatora'). This is for buttons.
         2. Field 'desc': Write the description strictly in {target_lang}.
-        3. Field 'display_name': If input is not in {target_lang}, format as: 'Original Name ({target_lang} Translation)'.
+        3. Field 'display_name': Use ONLY the original name in the native language.
         4. Always assume basics (water, salt, oil, sugar, pepper, ice) are available.
         4.1 Don't use all the ingredients for a single dish if they are not necessary. 
         4.2 List only used ingredients.
@@ -100,11 +100,13 @@ class GroqService:
         system_prompt = f"""You are a professional chef. Write a recipe strictly in {target_lang}.
         
         STRICT VISUAL RULES:
-        1. TITLE: Use the ORIGINAL native name (e.g., 'Poulet à la Fricassée').
-        2. BILINGUAL INGREDIENTS:
+        1. TITLE: Use ONLY the ORIGINAL native name (e.g., 'Poulet à la Fricassée'). Do NOT add any translation.
+        2. INGREDIENTS:
            - Detect the language of each input ingredient.
+           - If it is in {target_lang}, format as: '- Original - amount'.
            - If it's NOT in {target_lang}, format as: '- Original (Translation) - amount'.
            - Example: '- Pollo (Курица) - 1 кг'.
+           - Example: '- Курица - 1 кг' (if original is already in Russian).
         3. NUTRITION: Calculate per serving with emojis: 📊, 🥚, 🥑, 🌾, ⚡. Format EXACTLY:
            📊 Пищевая ценность на 1 порцию:
            🥚 Белки: X г
@@ -116,10 +118,10 @@ class GroqService:
         5. NO BOLD text in steps.
         
         STRUCTURE:
-        🥘 [Original Name]
+        🥘 [Original Name ONLY]
         
         📦 ИНГРЕДИЕНТЫ:
-        [Bilingual list]
+        [Ingredients list with translation only if needed]
         
         ⏱ Время: XX минут
         🎚 Сложность: [легкая/средняя/сложная]
