@@ -13,7 +13,6 @@ class GroqService:
     
     @staticmethod
     async def _send_groq_request(system_prompt: str, user_text: str, temperature: float = 0.5, max_tokens: int = 1500, retries: int = 1) -> str:
-        """Метод с логикой повторных попыток (Retry Logic)."""
         current_temp = temperature
         for attempt in range(retries + 1):
             try:
@@ -27,8 +26,7 @@ class GroqService:
                     temperature=current_temp
                 )
                 res_content = response.choices[0].message.content.strip()
-                if res_content:
-                    return res_content
+                if res_content: return res_content
             except Exception as e:
                 logger.error(f"Attempt {attempt + 1} failed: {e}")
             
@@ -41,25 +39,31 @@ class GroqService:
         if not text: return None
         try:
             match = re.search(r'(?s)(\{.*\}|\[.*\])', text)
-            if match:
-                return json.loads(match.group())
-        except Exception:
-            return None
+            if match: return json.loads(match.group())
+        except Exception: return None
         return None
 
     @staticmethod
-    async def analyze_categories(products: str) -> List[str]:
-        system_prompt = """Analyze ingredients. Return ONLY a JSON array of keys from: 
-        ['soup', 'main', 'salad', 'breakfast', 'dessert', 'drink', 'snack'].
-        
-        STRICT RULES:
-        1. Base: (water + salt + onion + carrot) = MUST suggest 'soup'.
-        2. Liquid base: (fruit/vegetable + milk/water) = MUST suggest 'drink' (smoothie/cocktail).
-        3. Max 4 most relevant categories."""
-        
-        res = await GroqService._send_groq_request(system_prompt, products, temperature=0.2)
+    async def determine_intent(text: str) -> Dict[str, str]:
+        prompt = "Analyze input. Return ONLY JSON: {\"intent\": \"ingredients\"} or {\"intent\": \"recipe\", \"dish\": \"name\"}."
+        res = await GroqService._send_groq_request(prompt, text, 0.1)
         data = GroqService._extract_json(res)
-        return data if isinstance(data, list) else ["main", "snack"]
+        return data if data else {"intent": "ingredients"}
+
+    @staticmethod
+    async def validate_ingredients(text: str) -> bool:
+        prompt = "Return ONLY JSON: {\"valid\": true} if input is food, else {\"valid\": false}."
+        res = await GroqService._send_groq_request(prompt, text, 0.1)
+        data = GroqService._extract_json(res)
+        return data.get("valid", True) if data else True
+
+    @staticmethod
+    async def analyze_categories(products: str) -> List[str]:
+        system_prompt = """Return ONLY a JSON array of keys: ['soup', 'main', 'salad', 'breakfast', 'dessert', 'drink', 'snack'].
+        Rules: water+salt+onion+carrot = 'soup'. fruit+milk/water = 'drink'."""
+        res = await GroqService._send_groq_request(system_prompt, products, 0.2)
+        data = GroqService._extract_json(res)
+        return data if isinstance(data, list) else ["main"]
 
     @staticmethod
     async def generate_dishes_list(products: str, category: str, lang_code: str = "ru") -> List[Dict[str, str]]:
@@ -68,15 +72,14 @@ class GroqService:
         
         system_prompt = f"""Suggest 4-6 dishes in category '{category}'.
         
-        STRICT FORMATTING:
-        1. 'name': Use ONLY the original native name.
-        2. 'display_name': Use ONLY the original native name. NO brackets, NO translations.
-        3. 'desc': Write a short tasty description STRICTLY in {target_lang}.
-        4. No transliterations.
+        STRICT RULES:
+        1. 'display_name': ONLY the original name. NO BRACKETS. NO TRANSLATIONS. 
+           Example: 'Soffritto di Verdure' (Correct), 'Soffritto di Verdure (Обжарка)' (WRONG).
+        2. 'desc': Short description strictly in {target_lang}.
         
         Return ONLY JSON: [{{"name": "...", "display_name": "...", "desc": "..."}}]."""
         
-        res = await GroqService._send_groq_request(system_prompt, f"Ingredients: {products}", temperature=0.6)
+        res = await GroqService._send_groq_request(system_prompt, f"Ingredients: {products}", 0.6)
         data = GroqService._extract_json(res)
         return data if isinstance(data, list) else []
 
@@ -88,21 +91,17 @@ class GroqService:
         system_prompt = f"""Write a recipe for '{dish_name}' in {target_lang}.
         
         STRICT RULES:
-        1. HEADER: Always use the original native name. Never translate it.
-        2. SILENT EXCLUSION: Use only provided products + basics (water, salt, pepper, oil, sugar).
-        3. INGREDIENTS: 
-           - If input was foreign, format: '- Original (Translation to {target_lang}) - amount'.
-           - If input was in {target_lang}, just: '- Name - amount'.
-        4. NUTRITION & INFO: Each parameter MUST be on a NEW LINE.
-        5. CULINARY TRIAD: End with advice in {target_lang} (Taste, Aroma, Texture).
-
+        1. TITLE: Use ONLY the original name provided. NO TRANSLATIONS in the title.
+        2. INGREDIENTS: Use only provided items + basics. Format: '- Name - amount'.
+        3. FORMATTING: Nutrition, Time, Difficulty, Servings - EACH ON A NEW LINE.
+        
         STRUCTURE:
-        🥘 [Original Name ONLY]
+        🥘 [Original Name]
         
         📦 ИНГРЕДИЕНТЫ:
         [List]
         
-        ⏱ Время: XX мин
+        ⏱ Время: XX
         🎚 Сложность: XX
         👥 Порции: XX
         
@@ -113,19 +112,13 @@ class GroqService:
         ⚡ Энерг. ценность: X ккал
 
         🔪 Приготовление:
-        [Steps - No bold]
+        [Steps]
 
-        💡 Совет шеф-повара (Кулинарная триада):
-        [Analysis in {target_lang}]"""
+        💡 Совет шеф-повара:
+        [Advice in {target_lang}]"""
 
-        res = await GroqService._send_groq_request(system_prompt, f"Dish: {dish_name}. Products: {products}", temperature=0.4)
-        
-        farewells = {"ru": "Приятного аппетита!", "en": "Bon appétit!", "es": "¡Buen provecho!"}
-        bon = farewells.get(lang_code[:2].lower(), "Приятного аппетита!")
-        return f"{res}\n\n👨‍🍳 <b>{bon}</b>"
+        return await GroqService._send_groq_request(system_prompt, f"Dish: {dish_name}. Products: {products}", 0.3)
 
     @staticmethod
     def get_welcome_message() -> str:
-        return """👋 Здравствуйте.
-🎤 Отправьте голосовое или текстовое сообщение с перечнем продуктов, и я подскажу, что из них можно приготовить.
-📝 Или напишите "Дай рецепт [блюдо]"."""
+        return "👋 Я ваш ИИ-шеф. Пришлите список продуктов или название блюда."
