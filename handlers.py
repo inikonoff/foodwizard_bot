@@ -29,6 +29,7 @@ def get_categories_keyboard(categories: list):
     return InlineKeyboardMarkup(inline_keyboard=builder)
 
 def get_dishes_keyboard(dishes_list: list):
+    # Используем display_name для кнопок, чтобы был виден перевод
     builder = [[InlineKeyboardButton(text=d.get('display_name', d['name'])[:40], callback_data=f"dish_{i}")] 
                for i, d in enumerate(dishes_list)]
     builder.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_categories")])
@@ -43,7 +44,9 @@ def get_recipe_back_keyboard():
 # --- ЛОГИКА ---
 async def cmd_start(message: Message):
     state_manager.clear_session(message.from_user.id)
-    await message.answer("👋 <b>Я ваш ИИ-шеф!</b>\nПришлите список продуктов или название блюда.", parse_mode="HTML")
+    # ИСПРАВЛЕНИЕ 1: Использование метода get_welcome_message
+    text = GroqService.get_welcome_message()
+    await message.answer(text, parse_mode="HTML")
 
 async def handle_text(message: Message):
     user_id = message.from_user.id
@@ -73,6 +76,7 @@ async def generate_and_send_recipe(message: Message, user_id: int, dish_name: st
     recipe = await GroqService.generate_recipe(dish_name, products)
     await wait.delete()
     state_manager.set_current_dish(user_id, dish_name)
+    # ИСПРАВЛЕНИЕ 2 & 4: Название и структура уже внутри метода generate_recipe
     await message.answer(recipe, reply_markup=get_recipe_back_keyboard(), parse_mode="HTML")
 
 async def handle_callback(callback: CallbackQuery):
@@ -80,11 +84,20 @@ async def handle_callback(callback: CallbackQuery):
     data = callback.data
     
     if data.startswith("cat_"):
-        cat = data.split("_")[1]
+        cat_key = data.split("_")[1]
+        # ИСПРАВЛЕНИЕ 3а: Динамическое название категории вместо "Меню"
+        category_title = CATEGORY_MAP.get(cat_key, "Блюда")
+        
         products = state_manager.get_products(user_id)
-        dishes = await GroqService.generate_dishes_list(products, cat)
+        dishes = await GroqService.generate_dishes_list(products, cat_key)
         state_manager.set_generated_dishes(user_id, dishes)
-        await callback.message.edit_text("📋 <b>Меню:</b>", reply_markup=get_dishes_keyboard(dishes), parse_mode="HTML")
+        
+        # ИСПРАВЛЕНИЕ 3б: Формируем текстовое описание со списком блюд
+        menu_text = f"🍽 <b>{category_title}</b>\n\n"
+        for d in dishes:
+            menu_text += f"🔸 <b>{d['display_name']}</b>\n{d['desc']}\n\n"
+        
+        await callback.message.edit_text(menu_text, reply_markup=get_dishes_keyboard(dishes), parse_mode="HTML")
     
     elif data.startswith("dish_"):
         index = int(data.split("_")[1])
@@ -94,7 +107,8 @@ async def handle_callback(callback: CallbackQuery):
         
     elif data == "restart":
         state_manager.clear_session(user_id)
-        await callback.message.answer("🗑 Жду новые продукты.")
+        text = GroqService.get_welcome_message()
+        await callback.message.answer(text, parse_mode="HTML")
         
     await callback.answer()
 
