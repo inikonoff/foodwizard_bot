@@ -29,7 +29,8 @@ class GroqService:
 
     @staticmethod
     def _extract_json(text: str) -> Union[Dict, List, None]:
-        if not text: return None
+        if not text:
+            return None
         try:
             match = re.search(r'(?s)(\{.*\}|\[.*\])', text)
             if match:
@@ -77,12 +78,12 @@ class GroqService:
         target_lang = languages.get(lang_code[:2].lower(), "Russian")
         
         system_prompt = f"""You are a creative chef. Suggest 4-6 dishes in category '{category}'.
-        f"STRICT LANGUAGE RULES:\n"
-            f"1. Field 'name': Use the NATIVE language of the dish (e.g., 'Insalata Estiva' or 'Pollo alla Cacciatora'). This is for buttons.\n"
-            f"2. Field 'desc': Write the description strictly in {target_lang}.\n"
-            f"3. Field 'display_name': If input is not {target_language}, format as: 'Original Name ({target_language} Translation)'.\n"
-            f"4. Always assume basics (water, salt, oil, sugar, pepper, ice) are available.\n"
-            f"5. If the ingredients allow for making a liquid dish (soup/broth) using water, carrots and onion ALWAYS include 'soup' in the list.\n"
+        STRICT LANGUAGE RULES:
+        1. Field 'name': Use the NATIVE language of the dish (e.g., 'Insalata Estiva' or 'Pollo alla Cacciatora'). This is for buttons.
+        2. Field 'desc': Write the description strictly in {target_lang}.
+        3. Field 'display_name': If input is not in {target_lang}, format as: 'Original Name ({target_lang} Translation)'.
+        4. Always assume basics (water, salt, oil, sugar, pepper, ice) are available.
+        5. If the ingredients allow for making a liquid dish (soup/broth) using water, carrots and onion ALWAYS include 'soup' in the list.
         Return ONLY JSON: [{{"name": "...", "display_name": "...", "desc": "..."}}]."""
         
         res = await GroqService._send_groq_request(system_prompt, f"Ingredients: {products}", 0.6)
