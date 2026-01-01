@@ -60,14 +60,11 @@ class GroqService:
 
     @staticmethod
     async def analyze_categories(products: str) -> List[str]:
-        """Определяет категории с усиленной логикой для супов."""
         prompt = f"""Analyze these ingredients: {products}.
-        
         STRICT RULES:
         1. If ingredients include (onion AND carrot AND water/meat/fish) -> ALWAYS include 'soup'.
         2. Return ONLY a JSON array of keys: ['soup', 'main', 'salad', 'breakfast', 'dessert', 'drink', 'snack'].
         3. Pick up to 3 most relevant categories."""
-        
         res = await GroqService._send_groq_request(prompt, "", 0.2)
         data = GroqService._extract_json(res)
         return data if isinstance(data, list) else ["main", "snack"]
@@ -79,14 +76,11 @@ class GroqService:
         
         system_prompt = f"""You are a creative chef. Suggest 4-6 dishes in category '{category}'.
         STRICT LANGUAGE RULES:
-        1. Field 'name': Use the NATIVE language of the dish (e.g., 'Insalata Estiva' or 'Pollo alla Cacciatora'). This is for buttons.
-        2. Field 'desc': Write the description strictly in {target_lang}.
-        3. Field 'display_name': Use ONLY the original name in the native language.
-        4. Always assume basics (water, salt, oil, sugar, pepper, ice) are available.
-        4.1 Don't use all the ingredients for a single dish if they are not necessary. 
-        4.2 List only used ingredients.
-        5. If the ingredients allow for making a liquid dish (soup/broth) using water, carrots and onion ALWAYS include 'soup' in the list.
-        Return ONLY JSON: [{{"name": "...", "display_name": "...", "desc": "..."}}]."""
+        1. Field 'name': Use the NATIVE language of the dish (e.g., 'Gazpacho'). This is the ID.
+        2. Field 'display_name': Use ONLY the format 'Native Name (Translation to {target_lang})'. Example: 'Gazpacho (Гаспачо)'.
+        3. Field 'desc': Write a short description strictly in {target_lang}.
+        4. Field 'original_name': The name in its native language.
+        Return ONLY JSON: [{{"name": "...", "display_name": "...", "desc": "...", "original_name": "..."}}]."""
         
         res = await GroqService._send_groq_request(system_prompt, f"Ingredients: {products}", 0.6)
         data = GroqService._extract_json(res)
@@ -100,43 +94,32 @@ class GroqService:
         system_prompt = f"""You are a professional chef. Write a recipe strictly in {target_lang}.
         
         STRICT VISUAL RULES:
-        1. TITLE: Use ONLY the ORIGINAL native name (e.g., 'Poulet à la Fricassée'). Do NOT add any translation.
+        1. TITLE: Use ONLY the ORIGINAL native name of the dish as provided. Do NOT translate it.
         2. INGREDIENTS:
-           - Detect the language of each input ingredient.
-           - If it is in {target_lang}, format as: '- Original - amount'.
-           - No brackets and no translations if input ingredients are in {target_lang}
-           - If it's NOT in {target_lang}, format as: '- Original (Translation) - amount'.
-           - Example: '- Pollo (Курица) - 1 кг'.
-           - Example: '- Курица - 1 кг' (if original is already in Russian).
-        3. NUTRITION: Calculate per serving with emojis: 📊, 🥚, 🥑, 🌾, ⚡. Format EXACTLY
-        4. CULINARY TRIAD: End with '💡 Совет шеф-повара (Кулинарная триада)'. 
-           Analyze Taste, Aroma, and Texture. Recommend THE ONLY one missing item for balance. Write in {target_lang} ONLY
-        5. NO BOLD text in steps.
-        
-        STRUCTURE:
-        🥘 [Original Name ONLY]
-        
-        📦 ИНГРЕДИЕНТЫ:
-        [Ingredients list with translation only if needed]
-        
-        ⏱ Время: XX минут
-        🎚 Сложность: [легкая/средняя/сложная]
-        👥 Порции: X чел.
-        
-        🔪 Приготовление:
-        [Steps]
-        
-        📊 Пищевая ценность на 1 порцию:
-           🥚 Белки: X г
-           🥑 Жиры: X г
-           🌾 Углеводы: X г
-           ⚡ Энерг. ценность: X ккал
+           - Detect the language of input ingredients.
+           - If NOT in {target_lang}, format: '- Original (Translation) - amount'.
+           - If in {target_lang}, format: '- Original - amount'.
+        3. STRUCTURE (MANDATORY ORDER):
+           🥘 [Original Name ONLY]
+           
+           📦 ИНГРЕДИЕНТЫ:
+           [List]
+           
+           ⏱ Время | 🎚 Сложность | 👥 Порции
+           
+           📊 Пищевая ценность на 1 порцию:
+              🥚 Белки: X г
+              🥑 Жиры: X г
+              🌾 Углеводы: X г
+              ⚡ Энерг. ценность: X ккал
 
-        💡 Совет шеф-повара (Кулинарная триада):
-        [Analysis]"""
+           🔪 Приготовление:
+           [Steps - NO BOLD]
+           
+           💡 Совет шеф-повара (Кулинарная триада):
+           [Analysis in {target_lang} summarizing Taste, Aroma, and Texture]"""
 
         res = await GroqService._send_groq_request(system_prompt, f"Dish: {dish_name}. Products: {products}", 0.3)
-        
         farewells = {"ru": "Приятного аппетита!", "en": "Bon appétit!", "es": "¡Buen provecho!"}
         bon = farewells.get(lang_code[:2].lower(), "Приятного аппетита!")
         
@@ -144,8 +127,7 @@ class GroqService:
 
     @staticmethod
     def get_welcome_message() -> str:
-        """Возвращает приветственное сообщение."""
         return """👋 Здравствуйте.
 
 🎤 Отправьте голосовое или текстовое сообщение с перечнем продуктов, и я подскажу, что из них можно приготовить.
-📝 Или напишите "Дай рецепт [блюдо"."""
+📝 Или напишите "Дай рецепт [блюдо]"."""
