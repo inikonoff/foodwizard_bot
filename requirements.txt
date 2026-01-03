@@ -1,5 +1,6 @@
 aiogram==3.13
 groq==0.9.0
+httpx>=0.24,<0.28
 python-dotenv==1.0.1
 pydub==0.25.1
 SpeechRecognition==3.10.4
