@@ -1,12 +1,16 @@
 from groq import AsyncGroq
-from config import GROQ_API_KEY, GROQ_MODEL, GROQ_MAX_TOKENS, COMPLEX_MEAL_MIN_INGREDIENTS
+from config import GROQ_API_KEY, GROQ_MODEL, GROQ_MAX_TOKENS
 from typing import Dict, List, Union, Optional
 import json
 import re
 import logging
 
+# Простая инициализация для groq==0.9.0
 client = AsyncGroq(api_key=GROQ_API_KEY)
 logger = logging.getLogger(__name__)
+
+# Значение по умолчанию
+COMPLEX_MEAL_MIN_INGREDIENTS = 3
 
 class GroqService:
     
@@ -194,7 +198,7 @@ class GroqService:
         2. Используй разные ингредиенты для разных блюд в рамках одного комплекса
         3. Учитывай последовательность подачи
         4. Не повторяй одни и те же блюда в разных комплексах
-        5. Рассчитай общее время приготовления
+        5. Рассчитай общее время приготовения
         
         ВЕРНИ СТРОГО JSON формат (список объектов):
         [
@@ -438,4 +442,17 @@ X минут
         ### Совет от философа:
         [Дай короткий философский совет по улучшению/достижению этого состояния]"""
 
-        res = await Groq
+        res = await GroqService._send_groq_request(prompt, "Напиши рецепт с учетом всех правил", 0.6)
+        if GroqService._is_refusal(res): 
+            return res
+        return res + "\n\n👨‍🍳 <b>Приятного аппетита!</b>"
+
+    @staticmethod
+    def _is_refusal(text: str) -> bool:
+        if "⛔" in text: 
+            return True
+        refusals = ["cannot fulfill", "cannot answer", "against my policy", "не могу ответить", "нарушает правила"]
+        for ph in refusals:
+            if ph in text.lower(): 
+                return True
+        return False
