@@ -196,7 +196,11 @@ class GroqService:
 
 👨‍🍳 Приготовление:
 1. [шаг на русском]
-💡 СОВЕТ ШЕФ-ПОВАРА: [на русском]
+💡 СОВЕТ ШЕФ-ПОВАРА: [нYour 'CHEF'S TIP' must analyze the dish through the triad:
+- TASTE (balance of salty/sour/sweet/bitter/ umami)
+- AROMA (herbs, spices, or Maillard reaction) 
+- TEXTURE (crunchy, creamy, tender)
+Recommend EXACTLY ONE missing item from the Culinary Trinity or French Mirepoix if it improves the triad]
 """
         res = await GroqService._send_groq_request(prompt, "Напиши рецепт", task_type="recipe")
         if GroqService._is_refusal(res): return res
