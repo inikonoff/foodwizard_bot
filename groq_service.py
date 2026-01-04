@@ -182,38 +182,38 @@ class GroqService:
             return "true" in res.lower()
 
     @staticmethod
-async def analyze_categories(products: str) -> List[str]:
-    # Санитизация входных продуктов
-    safe_products = GroqService._sanitize_input(products, max_length=300)
-    
-    # Улучшенный подсчет продуктов - игнорируем скобки и служебные слова
-    # Разделяем по запятым и точкам с запятой, удаляем лишние пробелы
-    items = [item.strip() for item in re.split(r'[,;]', safe_products) if item.strip()]
-    
-    # Фильтруем пустые элементы и слишком короткие (менее 2 букв)
-    items = [item for item in items if len(item) > 1]
-    
-    items_count = len(items)
-    
-    # Более гибкая логика для mix
-    if items_count >= 5:
-        mix_available = True
-        if items_count >= 7:  # Снизили с 8 до 7 для полноценного обеда
-            mix_type = "full"
-            mix_rule = """- "mix" (полноценный обед: Суп + Второе + Напиток/Салат)
+    async def analyze_categories(products: str) -> List[str]:
+        # Санитизация входных продуктов
+        safe_products = GroqService._sanitize_input(products, max_length=300)
+        
+        # Улучшенный подсчет продуктов - игнорируем скобки и служебные слова
+        # Разделяем по запятым и точкам с запятой, удаляем лишние пробелы
+        items = [item.strip() for item in re.split(r'[,;]', safe_products) if item.strip()]
+        
+        # Фильтруем пустые элементы и слишком короткие (менее 2 букв)
+        items = [item for item in items if len(item) > 1]
+        
+        items_count = len(items)
+        
+        # Более гибкая логика для mix
+        if items_count >= 5:
+            mix_available = True
+            if items_count >= 7:  # Снизили с 8 до 7 для полноценного обеда
+                mix_type = "full"
+                mix_rule = """- "mix" (полноценный обед: Суп + Второе + Напиток/Салат)
 ⚠️ "mix" рекомендуется если продуктов ≥7"""
-        else:
-            mix_type = "light"  
-            mix_rule = """- "mix" (лёгкий обед: 2 сочетающихся блюда)
+            else:
+                mix_type = "light"  
+                mix_rule = """- "mix" (лёгкий обед: 2 сочетающихся блюда)
 ⚠️ "mix" рекомендуется если продуктов ≥5"""
-    else:
-        # Для 3-4 продуктов все еще можно предложить mix
-        mix_available = items_count >= 3
-        mix_rule = """- "mix" (минимальный обед: простое сочетание)
+        else:
+            # Для 3-4 продуктов все еще можно предложить mix
+            mix_available = items_count >= 3
+            mix_rule = """- "mix" (минимальный обед: простое сочетание)
 ⚠️ "mix" возможен если продуктов ≥3"""
-    
-    # Создаем более убедительный промпт
-    prompt = f"""Ты опытный шеф-повар. Определи категории блюд, которые МОЖНО приготовить.
+        
+        # Создаем более убедительный промпт
+        prompt = f"""Ты опытный шеф-повар. Определи категории блюд, которые МОЖНО приготовить.
 
 🛒 ПРОДУКТЫ: {safe_products}
 📦 БАЗА (всегда доступна): соль, сахар, вода, подсолнечное масло, специи, лёд
@@ -254,34 +254,35 @@ async def analyze_categories(products: str) -> List[str]:
 3. ПОСЛЕДНИЙ символ ответа = "]"
 4. БЕЗ текста до/после JSON!
 """
-    
-    res = await GroqService._send_groq_request(
-        prompt, 
-        "Определи категории. Mix ВСЕГДА первым если возможно!", 
-        task_type="categorization",
-        temperature=0.1  # Снижаем температуру для более предсказуемых ответов
-    )
-    
-    try:
-        clean_json = GroqService._extract_json(res)
-        data = json.loads(clean_json)
-        if isinstance(data, list):
-            # Проверяем, есть ли mix и достаточно ли продуктов
-            if "mix" in data and not mix_available and items_count < 3:
-                data.remove("mix")
-                logger.warning(f"Removed 'mix' category: not enough products ({items_count} < 3)")
-            
-            # Если mix не добавлен, но продуктов достаточно - добавляем
-            if "mix" not in data and mix_available:
-                data.insert(0, "mix")
-                logger.info(f"Added 'mix' category for {items_count} products")
-            
-            return data
-    except Exception as e:
-        logger.error(f"Categories JSON Error: {e}, Response: {res}")
-    
-    # Fallback: если что-то пошло не так, возвращаем mix если продуктов достаточно
-    return ["mix", "main"] if items_count >= 3 else ["main"]
+        
+        res = await GroqService._send_groq_request(
+            prompt, 
+            "Определи категории. Mix ВСЕГДА первым если возможно!", 
+            task_type="categorization",
+            temperature=0.1  # Снижаем температуру для более предсказуемых ответов
+        )
+        
+        try:
+            clean_json = GroqService._extract_json(res)
+            data = json.loads(clean_json)
+            if isinstance(data, list):
+                # Проверяем, есть ли mix и достаточно ли продуктов
+                if "mix" in data and not mix_available and items_count < 3:
+                    data.remove("mix")
+                    logger.warning(f"Removed 'mix' category: not enough products ({items_count} < 3)")
+                
+                # Если mix не добавлен, но продуктов достаточно - добавляем
+                if "mix" not in data and mix_available:
+                    data.insert(0, "mix")
+                    logger.info(f"Added 'mix' category for {items_count} products")
+                
+                return data
+        except Exception as e:
+            logger.error(f"Categories JSON Error: {e}, Response: {res}")
+        
+        # Fallback: если что-то пошло не так, возвращаем mix если продуктов достаточно
+        return ["mix", "main"] if items_count >= 3 else ["main"]
+
     @staticmethod
     async def generate_dishes_list(products: str, category: str) -> List[Dict[str, str]]:
         # Санитизация входных продуктов
