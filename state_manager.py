@@ -69,6 +69,10 @@ class StateManager:
     def set_generated_dishes(self, user_id: int, dishes: List[dict]):
         self.generated_dishes[user_id] = dishes
 
+    def get_generated_dishes(self, user_id: int) -> List[dict]:
+        """Возвращает весь список сгенерированных блюд"""
+        return self.generated_dishes.get(user_id, [])
+
     def get_generated_dish(self, user_id: int, index: int) -> Optional[str]:
         dishes = self.generated_dishes.get(user_id, [])
         if 0 <= index < len(dishes):
