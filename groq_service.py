@@ -96,7 +96,11 @@ class GroqService:
     async def analyze_categories(products: str) -> List[str]:
         safe_products = GroqService._sanitize_input(products, max_length=300)
 
-        items = [i.strip() for i in re.split(r'[,;\n\.]', safe_products) if len(i.strip()) > 1]
+        if ',' not in safe_products and ';' not in safe_products and '\n' not in safe_products:
+            items = [i.strip() for i in safe_products.split() if len(i.strip()) > 1]
+        else:
+            items = [i.strip() for i in re.split(r'[,;\n\.]', safe_products) if len(i.strip()) > 1]
+
         items_count = len(items)
         mix_available = items_count >= 8
 
