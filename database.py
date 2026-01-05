@@ -2,10 +2,12 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, BigInteger, Text, Boolean, DateTime, Integer, JSON
 from sqlalchemy.sql import func
+from sqlalchemy.engine import make_url
 from config import DATABASE_URL
 
 Base = declarative_base()
 
+# Модели (остаются прежними)
 class User(Base):
     __tablename__ = 'users'
     user_id = Column(BigInteger, primary_key=True)
@@ -17,7 +19,7 @@ class User(Base):
 
 class UserSession(Base):
     __tablename__ = 'user_sessions'
-    user_id = Column(BigInteger, primary_key=True) # One-to-One c users
+    user_id = Column(BigInteger, primary_key=True)
     products = Column(Text)
     dialog_history = Column(JSON, default=[])
     state = Column(Text)
@@ -25,18 +27,26 @@ class UserSession(Base):
     available_categories = Column(JSON, default=[])
     current_dish = Column(Text)
     user_lang = Column(Text, default='ru')
-    products_lang = Column(Text)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-# Настройка движка
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL не найден в .env")
+    raise ValueError("DATABASE_URL is missing!")
 
-# Supabase требует postgresql://, но asyncpg хочет postgresql+asyncpg://
-# Фикс для совместимости, если строка начинается просто с postgres://
-db_url = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
-if not db_url.startswith("postgresql+asyncpg://"):
-     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+# Обработка URL для asyncpg
+url_obj = make_url(DATABASE_URL)
+# Формируем чистый URL без параметров
+db_url = f"postgresql+asyncpg://{url_obj.username}:{url_obj.password}@{url_obj.host}:{url_obj.port}/{url_obj.database}"
 
-engine = create_async_engine(db_url, echo=False)
+# Создаем движок с поддержкой SSL (критично для Supabase)
+engine = create_async_engine(
+    db_url,
+    echo=False,
+    connect_args={
+        "ssl": "require",
+        "server_settings": {
+            "tcp_user_timeout": "30000" # Защита от зависших соединений
+        }
+    }
+)
+
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
