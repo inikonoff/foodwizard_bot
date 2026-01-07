@@ -132,11 +132,11 @@ async def cmd_author(message: Message):
 async def cmd_stats(message: Message):
     """Показать статистику бота"""
     try:
-        stats = await db.get_stats()
+        stats = await database.get_stats()
         user_id = message.from_user.id
         
         # Получаем данные пользователя
-        user_recipes = await db.get_user_recipes(user_id, limit=5)
+        user_recipes = await database.get_user_recipes(user_id, limit=5)
         recipes_text = "\n".join([f"• {r['dish_name']} ({r['created_at'].strftime('%d.%m')})" 
                                   for r in user_recipes]) if user_recipes else "Пока нет сохраненных рецептов"
         
@@ -357,7 +357,7 @@ async def handle_callback(callback: CallbackQuery):
     if data == "clear_my_history":
         try:
             # Получаем ID пользователя из БД
-            async with db.pool.acquire() as conn:
+            async with database.pool.acquire() as conn:
                 await conn.execute("DELETE FROM recipes WHERE user_id = $1", user_id)
             await callback.message.edit_text("✅ Ваша история рецептов очищена.")
         except Exception as e:
