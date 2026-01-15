@@ -83,7 +83,7 @@ async def cmd_start(message: Message):
     
     # Создаем/получаем пользователя в БД
     try:
-        await db.get_or_create_user(
+        await database.get_or_create_user(
             telegram_id=user_id,
             username=username,
             first_name=first_name,
@@ -119,7 +119,7 @@ async def cmd_start(message: Message):
         # Фолбэк на стандартный старт
         await state_manager.clear_session(user_id)
         text = (
-            "👋 Здравствуйте.\n\n"
+            "👋 Здравствуйте.\н"
             "🎤 Отправьте голосовое или текстовое сообщение с перечнем продуктов, и я подскажу, что из них можно приготовить.\n"
             "📝 Или напишите 'Дай рецепт [блюдо]'.\n"
         )
@@ -153,12 +153,44 @@ async def cmd_stats(message: Message):
         logger.error(f"Ошибка статистики: {e}")
         await message.answer("❌ Ошибка получения статистики")
 
+# --- ФУНКЦИИ ДЛЯ ОПРЕДЕЛЕНИЯ НАМЕРЕНИЯ ---
+
+def is_recipe_request(text: str) -> bool:
+    """Определяет, является ли текст запросом на рецепт"""
+    if not text:
+        return False
+    text_lower = text.lower().strip()
+    return (text_lower.startswith("дай рецепт") or 
+            text_lower.startswith("рецепт") or
+            text_lower.startswith("как приготовить") or
+            text_lower.startswith("how to cook") or
+            text_lower.startswith("recipe for"))
+
+def extract_dish_name_from_request(text: str) -> str:
+    """Извлекает название блюда из запроса"""
+    text_lower = text.lower().strip()
+    
+    # Убираем ключевые фразы
+    phrases_to_remove = [
+        "дай рецепт", "рецепт", "как приготовить", 
+        "how to cook", "recipe for", "please", "пожалуйста"
+    ]
+    
+    for phrase in phrases_to_remove:
+        if text_lower.startswith(phrase):
+            text_lower = text_lower[len(phrase):].strip()
+    
+    # Убираем знаки препинания в начале
+    text_lower = text_lower.lstrip(":,-. ")
+    
+    return text_lower
+
 # --- ОБРАБОТКА СООБЩЕНИЙ ---
 
 async def handle_direct_recipe(message: Message):
-    """Обработка 'Дай рецепт ...'"""
+    """Обработка 'Дай рецепт ...' и других запросов рецептов"""
     user_id = message.from_user.id
-    dish_name = message.text.lower().replace("дай рецепт", "", 1).strip()
+    dish_name = extract_dish_name_from_request(message.text)
     
     if len(dish_name) < 3:
         await message.answer("Напишите название блюда.", parse_mode="HTML")
@@ -204,7 +236,11 @@ async def handle_voice(message: Message):
         except: 
             pass
         
-        await process_products_input(message, user_id, text)
+        # Проверяем, не является ли это запросом рецепта
+        if is_recipe_request(text):
+            await handle_direct_recipe_from_voice(message, text)
+        else:
+            await process_products_input(message, user_id, text)
             
     except Exception as e:
         await processing_msg.delete()
@@ -215,6 +251,33 @@ async def handle_voice(message: Message):
             except: 
                 pass
 
+async def handle_direct_recipe_from_voice(message: Message, recognized_text: str):
+    """Обработка запроса рецепта из голосового сообщения"""
+    user_id = message.from_user.id
+    dish_name = extract_dish_name_from_request(recognized_text)
+    
+    if len(dish_name) < 3:
+        await message.answer("Название блюда слишком короткое.", parse_mode="HTML")
+        return
+
+    wait = await message.answer(f"⚡️ Ищу: <b>{dish_name}</b>...", parse_mode="HTML")
+    try:
+        recipe = await groq_service.generate_freestyle_recipe(dish_name)
+        await wait.delete()
+        
+        # Сохраняем состояние
+        await state_manager.set_current_dish(user_id, dish_name)
+        await state_manager.set_state(user_id, "recipe_sent")
+        
+        # Сохраняем рецепт в историю БД
+        await state_manager.save_recipe_to_history(user_id, dish_name, recipe)
+        
+        await message.answer(recipe, reply_markup=get_hide_keyboard(), parse_mode="HTML")
+    except Exception as e:
+        await wait.delete()
+        logger.error(f"Ошибка генерации рецепта: {e}")
+        await message.answer("❌ Ошибка генерации рецепта.")
+
 async def handle_text(message: Message):
     """Обработка текстового сообщения"""
     user_id = message.from_user.id
@@ -224,12 +287,22 @@ async def handle_text(message: Message):
     if text.startswith('/'):
         return
     
+    # Проверяем, не является ли это запросом рецепта
+    if is_recipe_request(text):
+        await handle_direct_recipe(message)
+        return
+    
     await process_products_input(message, user_id, text)
 
 # --- ГЛАВНАЯ ЛОГИКА ОБРАБОТКИ ПРОДУКТОВ ---
 
 async def process_products_input(message: Message, user_id: int, text: str):
-    """Основная логика обработки ввода продуктов"""
+    """Основная логика обработки ввода продуктов (ТОЛЬКО для продуктов)"""
+    # Сначала проверяем, что это не запрос рецепта (дополнительная защита)
+    if is_recipe_request(text):
+        await handle_direct_recipe(message)
+        return
+    
     # Пасхалка
     if text.lower().strip(" .!") in ["спасибо", "спс", "благодарю"]:
         if state_manager.get_state(user_id) == "recipe_sent":
@@ -441,15 +514,19 @@ async def handle_callback(callback: CallbackQuery):
         await callback.answer()
         return
 
-# --- РЕГИСТРАЦИЯ ХЭНДЛЕРОВ ---
+# --- РЕГИСТРАЦИЯ ХЭНДЛЕРОВ (ИСПРАВЛЕННЫЙ ПОРЯДОК) ---
 
 def register_handlers(dp: Dispatcher):
+    # Сначала специфичные обработчики команд
     dp.message.register(cmd_start, Command("start"))
     dp.message.register(cmd_author, Command("author"))
-    dp.message.register(cmd_stats, Command("stats"))  # НОВАЯ КОМАНДА
-    dp.message.register(handle_direct_recipe, F.text.lower().startswith("дай рецепт"))
-    dp.message.register(handle_voice, F.voice)
-    dp.message.register(handle_text, F.text)
+    dp.message.register(cmd_stats, Command("stats"))
     
-    dp.callback_query.register(handle_delete_msg, F.data == "delete_msg")
-    dp.callback_query.register(handle_callback)
+    # Затем обработчик запросов рецептов (до общего обработчика текста!)
+    dp.message.register(handle_direct_recipe, F.text.lower().startswith("дай рецепт"))
+    dp.message.register(handle_direct_recipe, F.text.lower().startswith("рецепт"))
+    dp.message.register(handle_direct_recipe, F.text.lower().startswith("как приготовить"))
+
+dp.message.register(handle_voice, F.voice)
+dp.message.register(
+  
